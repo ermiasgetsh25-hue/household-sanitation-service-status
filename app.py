@@ -139,11 +139,6 @@ def build_features(
 
 # ---------- UI ----------
 st.title("🚽 Household Sanitation Service Status Predictor")
-st.markdown(
-    "This tool uses the **best-performing XGBoost model** to estimate the probability "
-    "that a household has **unimproved** sanitation service status. "
-    f"Classifications use the optimal **Youden threshold = {YOUDEN_THRESHOLD}**."
-)
 
 with st.sidebar:
     st.header("Enter household information")
