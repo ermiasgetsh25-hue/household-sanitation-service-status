@@ -1,10 +1,8 @@
 # ============================================================
 # STREAMLIT APP — Household Sanitation Service Status Predictor
-# Best model: XGBoost pipeline (saved as best_model_pipeline.pkl)
-# Youden threshold = 0.5533
+# Best model: XGBoost pipeline | Youden threshold = 0.5533
 # ============================================================
 import os
-import numpy as np
 import pandas as pd
 import joblib
 import streamlit as st
@@ -64,12 +62,12 @@ COLUMN_ORDER = [
     'hh_head_age_group_60_years',
 ]
 
-# ---------- YOUDEN THRESHOLD FROM TRAINING ----------
+# ---------- YOUDEN THRESHOLD ----------
 YOUDEN_THRESHOLD = 0.5533
 
 # ---------- REGION MAP (reference = Addis Ababa) ----------
 REGION_DUMMIES = {
-    "Addis Ababa":         None,                     # reference
+    "Addis Ababa":         None,
     "Amhara":              "amhara_region",
     "Benishangul-Gumuz":   "benishangul-gumuz_region",
     "Central Ethiopia":    "central_ethiopia_region",
@@ -92,17 +90,15 @@ def build_features(
 ):
     f = {c: 0 for c in COLUMN_ORDER}
 
-    # Ordinal
     wealth_map = {"Poorest": 0, "Poorer": 1, "Middle": 2, "Richer": 3, "Richest": 4}
     edu_map    = {"No education": 0, "Primary": 1, "Secondary": 2, "Higher": 3}
     f['household_wealth_index']         = wealth_map[wealth]
     f['highest_educational_attainment'] = edu_map[education]
 
-    # Numeric-coded binaries
-    f['time_to_get_water_(in_minutes)'] = 1 if water_time <= 30 else 0     # 1 = ≤30 min
-    f['number_of_households_Members']   = 1 if hh_size >= 4 else 0         # 1 = ≥4 members
+    # Binary-encoded HH size and water time (matches the coding scheme)
+    f['time_to_get_water_(in_minutes)'] = 1 if water_time == "≤ 30 Minutes" else 0
+    f['number_of_households_Members']   = 1 if hh_size == "≥ 4 members" else 0
 
-    # Categorical binaries
     f['place_of_residence']                      = 1 if residence == "Urban" else 0
     f['source_of_drinking_water']                = 1 if water_source == "Improved" else 0
     f['has_electricity']                         = 1 if electricity == "Yes" else 0
@@ -118,41 +114,35 @@ def build_features(
     f['community_level_media_exposure']          = 1 if comm_media == "High" else 0
     f['community_level_poverty']                 = 1 if comm_poverty == "High" else 0
 
-    # Region dummies (Addis Ababa = reference → leave all 0)
     dummy = REGION_DUMMIES.get(region)
     if dummy is not None:
         f[dummy] = 1
 
-    # Marital status (reference = Never married)
     f['current_marital_status_married'] = 1 if marital_status == "Married" else 0
-
-    # Water location (reference = Elsewhere)
     f['location_of_source_for_water_in_own_yard/plot'] = (
         1 if water_location == "In own yard/plot" else 0
     )
 
-    # Children under 5 (reference = No child)
     if children_group == "1-2 children":
         f['children_under5_group_1-2_children'] = 1
     elif children_group == ">=3 children":
         f['children_under5_group_=3_children'] = 1
 
-    # Head age group (reference = <35 years)
     if age_group == "35-60 years":
         f['hh_head_age_group_35-60_years'] = 1
     elif age_group == ">60 years":
         f['hh_head_age_group_60_years'] = 1
 
-    return np.array([f[c] for c in COLUMN_ORDER], dtype=float).reshape(1, -1)
+    # ⬇ THE KEY FIX: return a DataFrame, NOT a numpy array
+    return pd.DataFrame([f], columns=COLUMN_ORDER)
 
 
 # ---------- UI ----------
 st.title("🚽 Household Sanitation Service Status Predictor")
 st.markdown(
     "This tool uses the **best-performing XGBoost model** to estimate the probability "
-    "that a household has **unimproved** sanitation service status, using household, "
-    "water, socio-economic and community-level characteristics. "
-    f"Predictions are classified at the optimal **Youden threshold = {YOUDEN_THRESHOLD}**."
+    "that a household has **unimproved** sanitation service status. "
+    f"Classifications use the optimal **Youden threshold = {YOUDEN_THRESHOLD}**."
 )
 
 with st.sidebar:
@@ -160,7 +150,7 @@ with st.sidebar:
 
     st.subheader("Household demographics")
     sex            = st.radio("Sex of head of household", ["Female", "Male"])
-    hh_size        = st.number_input("Number of household members", 1, 30, 5)
+    hh_size        = st.radio("Number of household members", ["< 4 members", "≥ 4 members"])
     age_group      = st.selectbox("Age group of head of household",
                                   ["<35 years", "35-60 years", ">60 years"])
     marital_status = st.selectbox("Current marital status",
@@ -173,8 +163,9 @@ with st.sidebar:
     st.subheader("Water & sanitation")
     water_source   = st.radio("Source of drinking water", ["Unimproved", "Improved"])
     water_location = st.radio("Location of source for water",
-                              ["Elsewhere", "In own dwelling", "In own yard/plot"])
-    water_time     = st.number_input("Time to get water (minutes)", 0, 180, 10)
+                              ["Elsewhere", "In own yard/plot"])
+    water_time     = st.radio("Time to get water (minutes)",
+                              ["> 30 Minutes", "≤ 30 Minutes"])
     water_treat    = st.radio("Household water treatment", ["No", "Yes"])
     share_toilet   = st.radio("Share toilet with other households", ["No", "Yes"])
     hw_water       = st.radio("Presence of water at hand washing place",
@@ -196,7 +187,7 @@ with st.sidebar:
     comm_edu       = st.selectbox("Community-level education", ["Low", "High"])
     region         = st.selectbox("Region", list(REGION_DUMMIES.keys()))
 
-    predict_btn = st.button("Predict household Sanitation Service Status", type="primary")
+    predict_btn = st.button("Predict Sanitation Service Status", type="primary")
 
 
 # ---------- PREDICT ----------
@@ -236,13 +227,13 @@ if predict_btn:
         )
 
     with st.expander("Show feature vector (developers only)"):
-        st.dataframe(pd.DataFrame(X_input, columns=COLUMN_ORDER))
+        st.dataframe(X_input)
 
 else:
-    st.info("Fill in the sidebar and click **Household Sanitation Service Status**.")
+    st.info("Fill in the sidebar and click **Predict Sanitation Service Status**.")
 
 st.markdown("---")
 st.caption(
-    "Model: XGBoost | Trained on Demographic and Health Survey data from Ethiopia | "
-    f"Classification threshold (Youden Index) = {YOUDEN_THRESHOLD}"
+    "Model: XGBoost | Trained on DHS data from Ethiopia | "
+    f"Youden threshold = {YOUDEN_THRESHOLD}"
 )
