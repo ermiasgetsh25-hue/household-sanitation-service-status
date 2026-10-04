@@ -63,7 +63,7 @@ COLUMN_ORDER = [
 ]
 
 # ---------- YOUDEN THRESHOLD ----------
-YOUDEN_THRESHOLD = 0.5533
+YOUDEN_THRESHOLD = 0.5335
 
 # ---------- REGION MAP (reference = Addis Ababa) ----------
 REGION_DUMMIES = {
